@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "google/cloud/storage/internal/bucket_metadata_cache.h"
+#include "google/cloud/storage/bucket_metadata.h"
 #include <gmock/gmock.h>
 
 namespace google {
@@ -37,6 +38,32 @@ TEST(BucketMetadataCacheTest, NormalizeBucketName) {
   EXPECT_THAT(BucketMetadataCache::NormalizeBucketName(
                   "projects/my-project/buckets/test-bucket"),
               Eq("test-bucket"));
+}
+
+TEST(BucketCacheEntryTest, ResourceName) {
+  EXPECT_THAT(BucketCacheEntry::ResourceName("projects/123", "test-bucket"),
+              Eq("//storage.googleapis.com/projects/123/buckets/test-bucket"));
+  EXPECT_THAT(BucketCacheEntry::ResourceName("projects/123",
+                                             "projects/_/buckets/test-bucket"),
+              Eq("//storage.googleapis.com/projects/123/buckets/test-bucket"));
+  EXPECT_THAT(BucketCacheEntry::ResourceName("", "test-bucket"),
+              Eq("//storage.googleapis.com/projects/_/buckets/test-bucket"));
+}
+
+TEST(BucketCacheEntryTest, FromMetadata) {
+  auto entry = BucketCacheEntry::FromMetadata(storage::BucketMetadata()
+                                                  .set_name("test-bucket")
+                                                  .set_location("US-EAST1"));
+  // project_number() defaults to 0, which means "unknown".
+  EXPECT_THAT(entry.id,
+              Eq("//storage.googleapis.com/projects/_/buckets/test-bucket"));
+}
+
+TEST(BucketCacheEntryTest, FromUnknownProject) {
+  auto entry = BucketCacheEntry::FromUnknownProject("test-bucket");
+  EXPECT_THAT(entry.id,
+              Eq("//storage.googleapis.com/projects/_/buckets/test-bucket"));
+  EXPECT_THAT(entry.location, Eq("global"));
 }
 
 TEST(BucketMetadataCacheTest, HitAndMiss) {
