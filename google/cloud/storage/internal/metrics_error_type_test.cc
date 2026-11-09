@@ -78,6 +78,47 @@ TEST(MetricsErrorTypeTest, HttpStatusMetadataOverridesCoalescedUnavailable) {
   }
 }
 
+TEST(MetricsErrorTypeTest, ClientTimeoutsAndCurlTransportErrors) {
+  EXPECT_EQ(ComputeErrorType(google::cloud::internal::DeadlineExceededError(
+                "Retry policy exhausted, with a last message of Deadline "
+                "exceeded waiting for data in ReadObject",
+                GCP_ERROR_INFO())),
+            "TIMEOUT");
+  EXPECT_EQ(ComputeErrorType(
+                Status(StatusCode::kDeadlineExceeded,
+                       "Deadline expired before operation could complete",
+                       ErrorInfo{"", "googleapis.com", {}})),
+            "DEADLINE_EXCEEDED");
+
+  struct TestCase {
+    StatusCode code;
+    char const* msg;
+    char const* expected;
+  } const cases[] = {
+      {StatusCode::kDeadlineExceeded, "timeout [30s] while waiting for Write()",
+       "TIMEOUT"},
+      {StatusCode::kDeadlineExceeded,
+       "PerformWork() - CURL error [28]=Operation timed out", "TIMEOUT"},
+      {StatusCode::kUnavailable,
+       "PerformWork() - CURL error [6]=Couldn't resolve host name",
+       "DNS_FAILURE"},
+      {StatusCode::kUnavailable,
+       "PerformWork() - CURL error [35]=SSL connect error", "TLS_FAILURE"},
+      {StatusCode::kUnknown,
+       "PerformWork() - CURL error [60]=Peer certificate cannot be verified",
+       "TLS_FAILURE"},
+      {StatusCode::kUnavailable,
+       "PerformWork() - CURL error [7]=Failed to connect to host",
+       "CONNECTION_ERROR"},
+      {StatusCode::kUnavailable,
+       "PerformWork() - CURL error [56]=Failure when receiving data",
+       "CONNECTION_ERROR"},
+  };
+  for (auto const& c : cases) {
+    EXPECT_EQ(ComputeErrorType(Status(c.code, c.msg)), c.expected);
+  }
+}
+
 }  // namespace
 GOOGLE_CLOUD_CPP_INLINE_NAMESPACE_END
 }  // namespace storage_internal
